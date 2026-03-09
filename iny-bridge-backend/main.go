@@ -1,52 +1,56 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
-
 
 func server() {
 	e := echo.New()
 
+	e.Use(middleware.RequestLogger())
+	e.Use(middleware.Recover())
+
 	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Сервер запущен")
+		return c.String(http.StatusOK, "Hello, HTTP!")
 	})
 
-	e.Start(":8000")
+	e.GET("/ws", wsHandler)
+
+	if err := e.Start(":1323"); err != nil {
+		e.Logger.Fatal("failed to start server", err)
+	}
 }
 
-var upgrader = websocket.Upgrader {
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
+var upgrader = websocket.Upgrader{}
 
-func wsHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+func wsHandler(c echo.Context) error {
+	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		fmt.Println("Ошибка обновлений", err)
-		return
+		return err
 	}
-	defer conn.Close()
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("Ошибка чтения сообщения:", err)
-			break
-		}
-  		fmt.Printf("Получено: %s\\n", message)
-    if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
-    	fmt.Println("Ошибка записи сообщения:", err)
-     	break
-    }
+	defer ws.Close()
 
+	for {
+		// Write
+		err := ws.WriteMessage(websocket.TextMessage, []byte("Hello, Client!"))
+		if err != nil {
+			c.Logger().Error("failed to write WS message", "error", err)
+		}
+
+		// Read
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			c.Logger().Error("failed to read WS message", "error", err)
+		}
+		fmt.Printf("%s\n", msg)
 	}
 }
-
 
 func main() {
-
 	server()
 }
